@@ -115,7 +115,17 @@ async function run() {
       const result = await carsor.toArray()
       res.send(result)
     })
-
+    
+    app.patch("/company/:id",async(req,res)=>{
+      const id= req.params.id
+      const updatedCompany = req.body
+      const filter = {_id : new ObjectId(id)}
+      const updatedStatus = {
+        $set : {status : updatedCompany.status}
+      }
+      const result = await companyCollection.updateOne(filter,updatedStatus)
+      res.send(result)
+    })
     app.get("/my/company",async(req,res)=>{
       const quary ={};
       if(req.query.userId){
