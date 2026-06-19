@@ -9,7 +9,6 @@ require('dotenv').config()
 app.use(cors());
 app.use(express.json())
 
-
 app.get('/', (req, res) => {
   res.send('Hello World!')
 })
@@ -38,9 +37,60 @@ async function run() {
     const applicationCollection=database.collection("application")
     const planCollection = database.collection('plans');
     const subscriptionCollection = database.collection('subscriptions');
+    const sessionCollection = database.collection('session');
+
+    //verification releted
+    const verifyToken =async (req, res, next) =>{
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader) {
+    return res.status(401).json({ message: "Unauthorized access" });
+  }
+  const token = authHeader.split(" ")[1];
+  
+  if(!token){
+   return res.status(401).json({ message: "Unauthorized access" }); 
+  }
+  const query = { token : token}
+  const session = await sessionCollection.findOne(query)
+  
+  const userId = session.userId
+
+  const userQuery={
+    _id : userId
+  }
+  const user = await userCollection.findOne(userQuery)
+  if (!user) {
+                return res.status(401).send({ message: 'unauthorized access' })
+            }
+            req.user = user;
+  next()
+}
+
+const verifySeeker = (req, res, next) => {
+  if (req.user.role !== "seeker") {
+    return res.status(403).json({
+      message: "Forbidden",
+    });
+  }
+
+  next();
+};
+const verifyRecruiter = (req, res, next) => {
+  if (req.user.role !== "recruiter") {
+    return res.status(403).send({ message: "Forbidden" });
+  }
+  next();
+};
+const verifyAdmin = (req, res, next) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).send({ message: "Forbidden" });
+  }
+  next();
+};
 
     //application
-     app.post("/applications",async (req,res)=>{
+     app.post("/applications",verifySeeker,verifyToken, async (req,res)=>{
         const job = req.body ;
         const newJob={
           ...job,
@@ -50,10 +100,15 @@ async function run() {
         res.send(result)
     })
 
-    app.get('/applications',async(req,res)=>{
+    app.get('/applications',verifyToken,verifySeeker,async(req,res)=>{
       const query ={}
       if(req.query.applicantId){
         query.applicantId=req.query.applicantId
+        //chack applicant id
+        console.log(req.user,req.query.applicantId)
+        if(req.user._id.toString() !== req.query.applicantId){
+          return status(403).send({message: "Forbidden"})
+        }
       }
       if(req.query.jobId){
         query.jobId=req.query.jobId
@@ -62,6 +117,7 @@ async function run() {
       const result = await carsor.toArray()
       res.send(result || {})
     })
+
     //users
     app.get("/user",async(req,res)=>{
       const carsor = userCollection.find()
@@ -70,7 +126,7 @@ async function run() {
     })
 
     //jobs
-    app.post("/jobs",async (req,res)=>{
+    app.post("/jobs",verifyToken,verifyRecruiter, async (req,res)=>{
         const job = req.body ;
         const newJob={
           ...job,
@@ -81,7 +137,10 @@ async function run() {
     })
 
     app.get("/jobs",async(req,res)=>{
+      
+      //company releted quarys
       const query = {};
+      
       if(req.query.companyId){
         query.companyId = req.query.companyId
       }
@@ -94,7 +153,34 @@ async function run() {
     })
 
     app.get("/all/jobs",async(req,res)=>{
-       const carsor = jobCollection.find()
+      //public quary all type of search 
+      const query = {}
+
+      if(req.query.search){
+        query.$or=[
+          { jobTitle :{ $regex: req.query.search, $options: 'i' } },
+          { companyName :{ $regex: req.query.search, $options: 'i' } },
+        ]
+      }
+      if(req.query.jobType){
+        query.jobType = req.query.jobType
+      }
+      if(req.query.jobCategory){
+        query.jobCategory = req.query.jobCategory
+      }
+      if(req.query.isRemote){
+        query.isRemote = req.query.isRemote === "true"
+      }
+      if(req.query.page){
+        const page = req.query.page
+        const perPage = req.query.perPage || 12
+        const skipItem = (page - 1)*perPage
+
+        const carsor = jobCollection.find(query).skip(skipItem).limit(10)
+       const jobs = await carsor.toArray()
+       return res.send(jobs)
+      }
+       const carsor = jobCollection.find(query)
       const result = await carsor.toArray()
       res.send(result)
     })
@@ -110,13 +196,13 @@ async function run() {
 
     //company releted codes
 
-    app.get("/company",async(req,res)=>{
+    app.get("/company",verifyToken,verifyAdmin,async(req,res)=>{
       const carsor = companyCollection.find()
       const result = await carsor.toArray()
       res.send(result)
     })
     
-    app.patch("/company/:id",async(req,res)=>{
+    app.patch("/company/:id",verifyToken,async(req,res)=>{
       const id= req.params.id
       const updatedCompany = req.body
       const filter = {_id : new ObjectId(id)}
