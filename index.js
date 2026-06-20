@@ -171,15 +171,16 @@ const verifyAdmin = (req, res, next) => {
       if(req.query.isRemote){
         query.isRemote = req.query.isRemote === "true"
       }
-      if(req.query.page){
-        const page = req.query.page
-        const perPage = req.query.perPage || 12
-        const skipItem = (page - 1)*perPage
+    if (req.query.page) {
+        const page = req.query.page;
+        const perPage = req.query.perPage || 12;
+        const skipItems = (page - 1) * perPage
 
-        const carsor = jobCollection.find(query).skip(skipItem).limit(10)
-       const jobs = await carsor.toArray()
-       return res.send(jobs)
-      }
+        const total = await jobCollection.countDocuments(query);
+        const cursor = jobCollection.find(query).skip(skipItems).limit(perPage);
+        const jobs = await cursor.toArray();
+        return res.send({ total, jobs });
+    }
        const carsor = jobCollection.find(query)
       const result = await carsor.toArray()
       res.send(result)
